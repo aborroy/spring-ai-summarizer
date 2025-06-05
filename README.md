@@ -30,7 +30,7 @@ This project is a simple Spring Boot application that:
 5. [Business Logic](#business-logic)  
 6. [Run the App](#run-the-app)  
 7. [Test the Endpoint](#test-the-endpoint)  
-8. [Run the App with Docker](#run-the-app-with-docker)  
+8. [Run the App with Containers](#run-the-app-with-containers)  
 9. [License](#license)
 
 ---
