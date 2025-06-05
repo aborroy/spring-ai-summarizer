@@ -21,7 +21,7 @@ This project is a simple Spring Boot application that:
 
 ---
 
-## 📚 Table of Contents
+## Table of Contents
 
 1. [Requirements](#requirements)  
 2. [Project Setup](#project-setup)  
