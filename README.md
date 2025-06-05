@@ -10,7 +10,7 @@
 
 ## Overview
 
-This project is a lightweight Spring Boot application that transforms PDF documents into concise summaries using a **local Large Language Model**. It's built on top of [Spring AI](https://docs.spring.io/spring-ai/) and [Docker Model Runner](https://docs.docker.com/ai/model-runner/), making it easy to run offline with full control over your models.
+This project is a **tutorial** to build lightweight Spring Boot application that transforms PDF documents into concise summaries using a **local Large Language Model**. It's built on top of [Spring AI](https://docs.spring.io/spring-ai/) and [Docker Model Runner](https://docs.docker.com/ai/model-runner/), making it easy to run offline with full control over your models.
 
 This project is a simple Spring Boot application that:
 
