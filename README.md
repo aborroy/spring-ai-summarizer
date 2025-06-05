@@ -49,22 +49,28 @@ Replace your `pom.xml` with the following content:
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
+  <!-- Inherit configuration from the Spring Boot parent POM, which simplifies plugin and dependency management -->
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>3.5.0</version>
   </parent>
 
+  <!-- Maven model version -->
   <modelVersion>4.0.0</modelVersion>
+
+  <!-- Project coordinates (group ID, artifact ID, and version) -->
   <groupId>com.example</groupId>
   <artifactId>springai-pdf-summary</artifactId>
   <version>0.8.0</version>
 
+  <!-- Define reusable properties, including Java version and Spring AI BOM version -->
   <properties>
     <java.version>21</java.version>
     <spring-ai.version>1.0.0</spring-ai.version>
   </properties>
 
+  <!-- Import Spring AI BOM (Bill Of Materials) to manage dependency versions centrally -->
   <dependencyManagement>
     <dependencies>
       <dependency>
@@ -77,39 +83,51 @@ Replace your `pom.xml` with the following content:
     </dependencies>
   </dependencyManagement>
 
+  <!-- Declare project dependencies -->
   <dependencies>
+    <!-- Spring Boot starter for building RESTful web applications -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+
+    <!-- Spring AI integration for OpenAI-compatible models (also works with Docker Model Runner) -->
     <dependency>
       <groupId>org.springframework.ai</groupId>
       <artifactId>spring-ai-starter-model-openai</artifactId>
     </dependency>
+
+    <!-- Document reader that extracts content from PDF pages using Apache PDFBox -->
     <dependency>
       <groupId>org.springframework.ai</groupId>
       <artifactId>spring-ai-pdf-document-reader</artifactId>
     </dependency>
+
+    <!-- Lombok reduces boilerplate code by generating getters/setters/constructors at compile-time -->
     <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
-      <scope>provided</scope>
+      <scope>provided</scope> <!-- Not included in the final JAR, only needed at compile time -->
     </dependency>
   </dependencies>
 
+  <!-- Build configuration with required plugins -->
   <build>
     <plugins>
+      <!-- Spring Boot plugin to enable executable JAR creation and dependency resolution -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
+
+      <!-- Compiler plugin to set Java language level explicitly -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.11.0</version>
         <configuration>
-          <source>21</source>
-          <target>21</target>
+          <source>21</source> <!-- Compile using Java 21 -->
+          <target>21</target> <!-- Generate bytecode compatible with Java 21 -->
         </configuration>
       </plugin>
     </plugins>
@@ -124,15 +142,21 @@ Create the file `src/main/resources/application.yml` with the following content:
 ```yaml
 spring:
   ai:
-    openai:                                     
-      base-url: http://localhost:12434/engines  
-      api-key: nokeyrequired                    
+    openai:                                      # Configure the OpenAI-compatible model provider for Docker Model Runner
+      base-url: http://localhost:12434/engines   # Base URL for the model server (e.g., Docker Model Runner exposes "/engines" endpoint)
+      api-key: nokeyrequired                     # Dummy API key; Docker Model Runner does not require authentication
+
       init:
-        pull-model-strategy: when_missing       
+        pull-model-strategy: when_missing        # Automatically pull the model if it's not already available on the server
+
       chat:
         options:
-          model: ai/mistral                     
+          model: ai/mistral                      # Name of the model to use for chat (as exposed by the server)            
 ```
+
+* It's configuring Spring AI to use Docker Model Runner running locally, pointing to a model named `ai/mistral`
+* The model is pulled only if missing (`when_missing`) which avoids re-pulling each time
+* No API key is needed for local use
 
 ## Business Logic
 
@@ -142,6 +166,7 @@ spring:
 package org.alfresco.ai.summarize.service;
 
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.document.Document;
@@ -154,34 +179,53 @@ import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Service
-@RequiredArgsConstructor
+@Service // Makes this class injectable in other Spring components (e.g., controllers)
+@RequiredArgsConstructor // Lombok: generates a constructor with all final fields (chatModel)
 public class PdfSummarizationService {
 
+    // LLM model interface injected by Spring (configured in application.yml)
     private final ChatModel chatModel;
 
+    /**
+     * Summarizes a PDF file by:
+     * 1. Splitting it into pages
+     * 2. Summarizing each page separately
+     * 3. Producing a global summary from all page summaries
+     *
+     * @param pdfFile the uploaded PDF to summarize
+     * @return a final summary of the entire document
+     * @throws IOException if the file can't be read
+     */
     public String summarize(MultipartFile pdfFile) throws IOException {
+        // Initialize the chat client using the configured model
         ChatClient chatClient = ChatClient.builder(chatModel).build();
 
+        // Extract pages from the PDF using Spring AI's PDF reader
         List<Document> pages = new PagePdfDocumentReader(
-            new InputStreamResource(pdfFile.getInputStream())
-        ).get();
+            new InputStreamResource(pdfFile.getInputStream()) // Wrap file input as a Spring resource
+        ).get(); // Returns a list of Document objects (one per page)
 
+        // Summarize each page using the LLM, producing one summary per page
         List<String> summaries = pages.stream()
-            .map(Document::getText)
-            .map(content -> chatClient.prompt()
-                .user("Summarize this page: " + content)
-                .call()
-                .content())
+            .map(Document::getText) // Get plain text of each page
+            .map(content -> chatClient.prompt() // Create a prompt for each page
+                .user("Summarize this page: " + content) // Instruction to the model
+                .call() // Call the LLM
+                .content()) // Extract the result text
             .collect(Collectors.toList());
 
+        // Ask the LLM to summarize the full document using the previous page summaries
         return chatClient.prompt()
             .user("Summarize the whole document: " + String.join("\n", summaries))
             .call()
-            .content();
+            .content(); // Return the global summary
     }
 }
 ```
+
+* Uses Spring AI’s PDF reader to break a document into pages.
+* Sends each page to the LLM to get a per-page summary.
+* Then creates a final global summary by feeding all page summaries back to the LLM.
 
 ### `SummarizationController.java`
 
@@ -189,6 +233,7 @@ public class PdfSummarizationService {
 package org.alfresco.ai.summarize.rest;
 
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -198,19 +243,34 @@ import org.alfresco.ai.summarize.service.PdfSummarizationService;
 
 import java.io.IOException;
 
-@RestController
-@RequestMapping("/api/summarize")
-@RequiredArgsConstructor
+@RestController // Marks this class as a REST controller (JSON responses by default)
+@RequestMapping("/api/summarize") // Base URL for all endpoints in this controller
+@RequiredArgsConstructor // Lombok: generates a constructor for 'service' (final field)
 public class SummarizationController {
 
+    // Injected service that performs the actual summarization logic
     private final PdfSummarizationService service;
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    /**
+     * HTTP POST endpoint that receives a PDF file and returns its summary.
+     *
+     * @param file the uploaded PDF file (multipart/form-data)
+     * @return a plain text summary of the PDF, generated via LLM
+     * @throws IOException if reading the file fails
+     */
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE) // Accepts file uploads
     public ResponseEntity<String> summarizePdf(@RequestParam("file") MultipartFile file) throws IOException {
+        // Delegate to the service and return the result in a 200 OK response
         return ResponseEntity.ok(service.summarize(file));
     }
 }
+
 ```
+
+* Defines a single POST `/api/summarize` endpoint.
+* Accepts a file upload using `multipart/form-data`.
+* Delegates the actual PDF processing and summarization to `PdfSummarizationService`.
+* Returns the resulting summary as a plain String in the HTTP response body.
 
 ### `App.java`
 
@@ -220,12 +280,20 @@ package org.alfresco.ai.summarize;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootApplication
+@SpringBootApplication // Marks this class as the main configuration and bootstrap class
 public class App {
+
+    /**
+     * Main method — entry point for the Spring Boot application.
+     *
+     * @param args command-line arguments passed to the app (if any)
+     */
     public static void main(String[] args) {
+        // Bootstraps the Spring Boot application, starting the embedded server and scanning components
         SpringApplication.run(App.class, args);
     }
 }
+
 ```
 
 ## Run the App
