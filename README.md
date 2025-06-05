@@ -1,11 +1,39 @@
 # AI Summarizer
 
+[![Java 21](https://img.shields.io/badge/java-21-blue.svg)](https://adoptium.net/en-GB/temurin/releases/)
+[![Spring Boot](https://img.shields.io/badge/spring--boot-3.5.0-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Docker Model Runner](https://img.shields.io/badge/Docker-Model--Runner-blue.svg)](https://docs.docker.com/ai/model-runner/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
+
+> Summarize PDF documents using a local LLM with Spring Boot + Docker Model Runner
+
+
+## Overview
+
+This project is a lightweight Spring Boot application that transforms PDF documents into concise summaries using a **local Large Language Model**. It's built on top of [Spring AI](https://docs.spring.io/spring-ai/) and [Docker Model Runner](https://docs.docker.com/ai/model-runner/), making it easy to run offline with full control over your models.
+
 This project is a simple Spring Boot application that:
 
 * Accepts PDF files via a REST API
 * Splits the PDF by page
 * Uses a local Large Language Model (via [Docker Model Runner](https://docs.docker.com/ai/model-runner/)) to summarize each page
 * Produces a final global summary of the entire document
+
+---
+
+## 📚 Table of Contents
+
+1. [Requirements](#requirements)  
+2. [Project Setup](#project-setup)  
+3. [pom.xml Configuration](#pomxml-configuration)  
+4. [Application Configuration](#configuration-applicationyml)  
+5. [Business Logic](#business-logic)  
+6. [Run the App](#run-the-app)  
+7. [Test the Endpoint](#test-the-endpoint)  
+8. [Run the App with Docker](#run-the-app-with-docker)  
+9. [License](#license)
+
+---
 
 ## Requirements
 
@@ -385,3 +413,8 @@ services:
     ports:
       - 8080:8080
 ```
+
+## License
+
+This project is licensed under the **Apache License 2.0**.
+See the [LICENSE](LICENSE) file for details.
