@@ -1,222 +1,214 @@
-# Lab: Building a Local PDF Summarizer with Spring Boot & Docker‑Hosted LLM
+# Lab: Building a Local PDF Summarizer with Spring Boot & Docker-Hosted LLM
 
-Welcome to this hands‑on lab! You’ll create a **Spring Boot 3.5** micro‑service that turns any PDF into a concise summary using a **local Large Language Model** (LLM) served through Docker Model Runner.
-By the end you will have a running REST endpoint (`POST /api/summarize`) that accepts a PDF and returns a summary – **without ever sending data to the cloud**.
+Welcome to this hands-on lab! You'll create a **Spring Boot 3.5** microservice that transforms any PDF into a concise summary using a **local Large Language Model** (LLM) served through Docker Model Runner. By the end, you'll have a running REST endpoint (`POST /api/summarize`) that accepts a PDF and returns a summary – **without ever sending data to the cloud**.
 
 ## Learning Objectives
 
-1. Scaffold a modern Spring Boot project with Maven.
-2. Wire Spring AI to a locally running LLM (Mistral) via Docker Model Runner.
-3. Read and split PDFs page‑by‑page with Spring AI utilities.
-4. Chain multiple prompts to build a global summary.
-5. Expose the functionality as a clean REST API.
-6. (Bonus) Package everything with Docker Compose for a one‑command spin‑up.
+1. Scaffold a modern Spring Boot project with proper dependency management
+2. Configure Spring AI to communicate with a locally running LLM (Mistral) via Docker Model Runner
+3. Implement PDF processing with page-by-page text extraction using Spring AI utilities
+4. Build a multi-stage summarization pipeline with prompt chaining
+5. Expose functionality through a robust REST API with proper error handling
+6. Package the complete solution with Docker Compose for easy deployment
 
-## Prerequisites
+## Prerequisites & Environment Setup
 
-| Tool           | Minimum Version | Check Command      |
-| -------------- | --------------- | ------------------ |
-| Java (Temurin) | 21              | `java‑‑version`    |
-| Maven          | 3.9             | `mvn ‑‑version`    |
-| Docker Desktop | 4.40            | `docker ‑‑version` |
+| Tool           | Minimum Version | Check Command        | Installation Notes |
+| -------------- | --------------- | -------------------- | ------------------ |
+| Java (Temurin) | 21              | `java --version`     | Use SDKMAN or official installer |
+| Maven          | 3.9             | `mvn --version`      | Bundled with most IDEs |
+| Docker Desktop | 4.40            | `docker --version`   | Required for Model Runner |
+| IDE            | Latest          | N/A                  | IntelliJ IDEA recommended |
 
-If any command fails, fix it **before** moving on.
+**Verification Task:** Run all check commands. If any fail, install the missing tools before proceeding.
 
-## 0 · Download an LLM Once
+## Step 0: Download and Verify LLM Model
 
-We’ll use the **Mistral 7B** model because it’s small enough for a laptop yet surprisingly capable.
+We'll use **Mistral 7B** - it's lightweight (~4GB) yet powerful enough for quality summarization.
 
-```bash
-# Run this, watch Netflix while ~4 GiB downloads
-$ docker model pull ai/mistral
-```
+**Your Task:**
+1. Use `docker model pull` to download the `ai/mistral` model
+2. Verify the download with `docker model list`
+3. Check if Docker Model Runner is active with `docker model status`
 
-*Troubleshooting hint:* If `docker model` isn’t recognised, your Docker Desktop is too old. Upgrade.
+**Common Issues:**
+- Command not recognized? Your Docker Desktop version is too old
+- Download hanging? Check your internet connection and Docker daemon
 
-## 1 · Create the Project Skeleton
+**Success Indicator:** You should see "Docker Model Running" and the mistral model listed.
 
-1. Decide on a group and artifact ID that makes sense for you (write them down – you need them later).
-2. Run the Maven archetype generator:
+## Step 1: Create Project Structure
 
-```bash
-mvn archetype:generate \
-  -DgroupId=<your.group> \
-  -DartifactId=<your-artifact> \
-  -DarchetypeArtifactId=maven-archetype-quickstart \
-  -DinteractiveMode=false
-```
+**Your Task:**
+1. Choose meaningful names:
+   - Group ID: Use your domain (e.g., `com.yourname.pdfsummarizer`)
+   - Artifact ID: Something descriptive (e.g., `pdf-summarizer-service`)
 
-> **Hint** Any modern IDE (IntelliJ, VS Code + Extension Pack for Java, etc.) lets you run Maven goals from its GUI.
+2. Generate a Maven project using the `maven-archetype-quickstart` archetype
 
-Open the generated project in your IDE and do an initial *Run* to ensure nothing is broken.
+3. Open the project in your IDE and run an initial `mvn clean compile` to verify setup
 
-## 2 · Add Dependencies (pom.xml)
+## Step 2: Configure Dependencies (pom.xml)
 
-Open `pom.xml` and make it Spring‑Boot‑aware:
+**Your Task:** Transform the basic Maven project into a Spring Boot application by modifying `pom.xml`:
 
-* Set the parent to `org.springframework.boot:spring-boot-starter-parent:3.5.0`.
-* Declare a `<properties>` block with `java.version` = **21** and `spring-ai.version` = **1.0.0**.
-* Import the Spring AI BOM (hint: `<dependencyManagement>`).
-* Add these **three** starters/dependencies:
+### Required Changes:
+1. **Parent Configuration:** Set Spring Boot as the parent with version 3.5.0
+2. **Properties Block:** Define Java version (21) and Spring AI version (1.0.0)
+3. **Dependency Management:** Import the Spring AI BOM to manage versions
+4. **Core Dependencies:** Add these three essential starters:
+   - Web starter (for REST endpoints)
+   - Spring AI OpenAI starter (for LLM communication)
+   - PDF document reader (for PDF processing)
+5. **Optional Enhancement:** Add Lombok for cleaner code
 
-  1. `spring-boot-starter-web`
-  2. `spring-ai-starter-model-openai`
-  3. `spring-ai-pdf-document-reader`
-* (Optional but recommended) Add Lombok as *provided* scope.
+**Verification:** `mvn clean package` should complete without errors.
 
-Let IntelliJ’s auto‑complete do the heavy lifting. When finished, `mvn package` should succeed with no errors.
+## Step 3: Application Configuration
 
-> **Self‑check:** Does the effective POM show *exactly* Spring Boot 3.5.0 and Spring AI 1.0.0? If not, revisit your `<parent>` and BOM sections.
+**Your Task:** Create `src/main/resources/application.yml` with proper Spring AI configuration.
 
-## 3 · Configure Spring AI (application.yml)
+### Configuration Requirements:
+1. **Server Settings:** Configure the application port
+2. **Multipart Configuration:** Set appropriate file size limits for PDF uploads
+3. **Spring AI OpenAI Settings:** Configure four key properties:
+   - `base-url`: Where is Docker Model Runner listening? (Hint: localhost with a specific port and path)
+   - `api-key`: What dummy value works for local usage?
+   - `model`: Which model did you download in Step 0?
+   - `temperature`: What value gives consistent summaries? (0.0-1.0 range)
 
-Inside `src/main/resources`, create `application.yml` with **four** keys under `spring.ai.openai`:
+**Research Required:**
+- What port does Docker Model Runner use by default?
+- What's the correct API endpoint path for OpenAI-compatible APIs?
+- How does temperature affect LLM output consistency?
 
-```yaml
-spring:
-  ai:
-    openai:
-      base-url: <???>
-      api-key: <???>
-      init:
-        pull-model-strategy: when_missing
-      chat:
-        options:
-          model: ai/mistral
-```
+## Step 4: Core Business Logic - Service Layer
 
-Fill the two `<?>` placeholders:
+**Your Task:** Create a `PdfSummarizationService` class that orchestrates the summarization process.
 
-* `base-url`: the endpoint where Docker Model Runner exposes models (hint: `http://localhost:12434/engines`).
-* `api-key`: a dummy value – local usage doesn’t enforce auth.
-
-Save‑and‑sync. No compilation needed yet.
-
-## 4 · Business Logic — Service Layer
-
-Create `org.<your.group>.service.PdfSummarizationService`.
-
+### Class Structure:
 ```java
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor  // If using Lombok
 public class PdfSummarizationService {
-
-    private final ChatModel chatModel; // injected by Spring
-
+    
+    private final ChatModel chatModel; // Spring will inject this
+    
     public String summarize(MultipartFile pdfFile) throws IOException {
-        // 1. Build a ChatClient from chatModel
-        // 2. Split the PDF into List<Document> pages using PagePdfDocumentReader
-        // 3. For each page, call the LLM with prompt "Summarize this page: ..."
-        // 4. Collect page summaries
-        // 5. Call the LLM again with prompt "Summarize the whole document: ..."
-        // 6. Return the global summary
-        return null; // TODO replace
+        // Your implementation here
+        return "TODO: Implement summarization logic";
     }
 }
 ```
 
-**Hints:**
+### Implementation Strategy:
+1. **Input Validation:** Check if the file is valid and not empty
+2. **PDF Processing:** Use `PagePdfDocumentReader` to extract text from each page
+3. **Page Summarization:** Create individual summaries for each page using the LLM
+4. **Global Summarization:** Combine page summaries into a comprehensive document summary
 
-* The `PagePdfDocumentReader` constructor takes an `InputStreamResource`, wrap `pdfFile.getInputStream()`.
-* `ChatClient.builder(chatModel).build()` gives you a fluent prompt API.
-* Use `pages.stream().map(Document::getText)` to get raw page text.
-* `String.join("\n", summaries)` glues individual summaries together.
+### Key Classes to Research:
+- `ChatClient`: How do you build one from a `ChatModel`?
+- `PagePdfDocumentReader`: What constructor parameters does it need?
+- `Document`: How do you extract text content?
+- `InputStreamResource`: How do you create one from a `MultipartFile`?
 
-Compile often. IntelliJ will tell you what to import.
+**Design Questions:**
+- Why summarize page-by-page instead of the entire document at once?
+- What happens if a PDF has no readable text?
+- How should you handle very large PDFs?
 
-## 5 · REST Layer — Controller
+**Prompt Engineering Tips:**
+- Be specific about desired summary length
+- Ask for key points and main ideas
 
-Create `org.<your.group>.rest.SummarizationController`.
+## Step 5: REST API Layer - Controller
 
-```java
-@RestController
-@RequestMapping("/api/summarize")
-@RequiredArgsConstructor
-public class SummarizationController {
+**Your Task:** Create a REST controller that exposes your summarization service.
 
-    private final PdfSummarizationService service;
+### Controller Requirements:
+1. **Annotations:** Use appropriate Spring annotations for REST endpoints
+2. **Endpoint Mapping:** Map to `/api/summarize` with POST method
+3. **File Handling:** Accept multipart file uploads
+4. **Error Handling:** Return appropriate HTTP status codes
+5. **Response Format:** Return plain text summaries
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> summarizePdf(@RequestParam("file") MultipartFile file) throws IOException {
-        // Delegate to service and return
-        return null; // TODO replace
-    }
-}
-```
+### Implementation Considerations:
+- What `@RequestMapping` configuration do you need?
+- How do you handle `MultipartFile` parameters?
+- What should happen when summarization fails?
+- Should you return `ResponseEntity` or plain `String`?
 
-*Return `ResponseEntity.ok(service.summarize(file))` once the service works.*
+## Step 6: Application Bootstrap
 
----
+**Your Task:** Replace the default `App.java` with a proper Spring Boot application class.
 
-## 6 · Bootstrapping
+### Requirements:
+- Use the correct Spring Boot annotation
+- Ensure proper package structure for component scanning
+- Verify your service and controller are in sub-packages that will be scanned
 
-Replace the archetype’s default `App.java` with:
+**Package Structure Tip:** Your main class should be in a root package with service and controller classes in sub-packages.
 
-```java
-@SpringBootApplication
-public class App {
-    public static void main(String[] args) {
-        SpringApplication.run(App.class, args);
-    }
-}
-```
+## Step 7: Local Testing & Debugging
 
-Make sure it lives in a **root package** that encloses `service` and `rest` packages so component scanning picks them up.
+**Your Task:** Get everything running and test the complete workflow.
 
-## 7 · Run & Test Locally
+### Testing Checklist:
+1. **Verify Model Runner:** Confirm Docker Model Runner is active
+2. **Start Application:** Use Maven to run your Spring Boot app
+3. **Test Endpoint:** Use curl or Postman to send a PDF file
 
-1. **Start** Docker Model Runner in a separate terminal:
-
-   ```bash
-   docker model status
-   # if you see "Docker Model Running" you’re good
-   ```
-
-2. **Run** the Spring Boot application:
-
-   ```bash
-   mvn clean package && java -jar target/<your-artifact>-0.0.1-SNAPSHOT.jar
-   ```
-
-3. **POST** a PDF:
-
-   ```bash
-   curl -F file=@sample.pdf http://localhost:8080/api/summarize
-   ```
-
-   You should receive plaintext JSON‑escaped summary lines.
-
-*Troubleshooting tip:* if you get `ResourceAccessException` pointing to `localhost:12434`, ensure step 1 is really running.
-
-## 8 · Containerise with Docker Compose
-
-Inside the project root, run:
+### Sample Test Command Structure:
 
 ```bash
-docker init
+# You'll need to construct the proper curl command
+curl -F file=@your-test.pdf http://localhost:YOUR_PORT/YOUR_ENDPOINT
 ```
 
-Choose **Java**, port **8080**, Java version **21**. Accept the defaults.
+**Troubleshooting Guide:**
+- `ResourceAccessException`: Check Docker Model Runner status and base-url configuration
+- `404 Not Found`: Verify your controller mappings and component scanning
+- `400 Bad Request`: Check file upload configuration and request format
+- Empty response: Examine your service logic and LLM prompts
 
-Open `compose.yaml` and set an environment override so the app inside the container can reach the model on the host:
+**Testing Tips:**
+- Start with a small, simple PDF
+- Check application logs for detailed error information
+- Verify each step independently (PDF reading, LLM calls, etc.)
 
-```yaml
-environment:
-  SPRING_AI_OPENAI_BASE_URL: http://host.docker.internal:12434/engines
-```
+## Step 8: Containerization with Docker Compose
 
-Finally:
+**Your Task:** Package your application for easy deployment.
 
-```bash
-docker compose up --build
-```
+### Docker Setup:
+1. **Initialize Docker:** Use `docker init` to generate Docker configuration
+2. **Configure Environment:** Set environment variables for container-to-host communication
+3. **Network Configuration:** Ensure the containerized app can reach Docker Model Runner on the host
 
-Then hit the same `curl` command but expect a slightly longer cold‑start.
+### Key Considerations:
+- What base URL should the containerized app use to reach the host?
+- How do you override Spring configuration with environment variables?
+- What port mapping do you need in Docker Compose?
 
-## 9 · Wrap‑Up & Next Steps
+## Success Criteria
 
-* You built an *offline* summariser that keeps data on‑prem.
-* You integrated Spring AI with Docker Model Runner in under 150 lines of code.
-* You practised *typing* real code – the only reliable way to learn.
+**Functional Requirements:**
+- Application starts without errors
+- PDF files can be uploaded and processed
+- Summaries are generated and returned
+- Local LLM integration works correctly
 
-Take it further by exploring **vector stores** and **chunking strategies** for larger documents, or swap in a different model (`ai/gemma`, `ai/llama‑3‑8b`, etc.).
+**Technical Requirements:**
+- Proper Spring Boot project structure
+- Clean separation of concerns (Controller → Service → AI)
+- Appropriate error handling
+- Containerized deployment option
+
+**Learning Outcomes:**
+- Understanding of Spring AI framework
+- Experience with local LLM deployment
+- REST API development skills
+- Docker containerization knowledge
+
+> Remember: The goal is to understand each component and how they work together. Don't hesitate to experiment, break things, and fix them – that's how real learning happens!
