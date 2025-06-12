@@ -46,6 +46,15 @@ We'll use **Mistral 7B** - it's lightweight (~4GB) yet powerful enough for quali
 
 2. Generate a Maven project using the `maven-archetype-quickstart` archetype
 
+```bash
+mvn archetype:generate                                   \
+  -DgroupId=com.yourname.pdfsummarizer                   \
+  -DartifactId=pdf-summarizer-service                    \
+  -DarchetypeGroupId=org.apache.maven.archetypes         \
+  -DarchetypeArtifactId=maven-archetype-quickstart       \
+  -DarchetypeVersion=1.4 -DinteractiveMode=false
+```
+
 3. Open the project in your IDE and run an initial `mvn clean compile` to verify setup
 
 ## Step 2: Configure Dependencies (pom.xml)
@@ -62,6 +71,25 @@ We'll use **Mistral 7B** - it's lightweight (~4GB) yet powerful enough for quali
    - PDF document reader (for PDF processing)
 5. **Optional Enhancement:** Add Lombok for cleaner code
 
+```xml
+<!-- parent -->
+<parent>...Spring Boot 3.5.0...</parent>
+
+<!-- properties -->
+<java.version>21</java.version>
+<spring-ai.version>1.0.0</spring-ai.version>
+
+<!-- dependencyManagement -->
+<dependencyManagement>...spring-ai-bom...</dependencyManagement>
+
+<!-- starters you’ll need -->
+<dependency> spring-boot-starter-web </dependency>
+<dependency> spring-ai-openai-spring-boot-starter </dependency>
+<dependency> spring-ai-pdf-document-reader </dependency>
+<!-- optional -->
+<dependency scope="provided"> lombok </dependency>
+```
+
 **Verification:** `mvn clean package` should complete without errors.
 
 ## Step 3: Application Configuration
@@ -77,6 +105,22 @@ We'll use **Mistral 7B** - it's lightweight (~4GB) yet powerful enough for quali
    - `model`: Which model did you download in Step 0?
    - `temperature`: What value gives consistent summaries? (0.0-1.0 range)
 
+```yaml
+server:
+  port: 8080
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB    
+  ai:
+    openai:
+      base-url:  http://localhost:12434/
+      api-key:   dummy
+      model:     ai/istral
+      temperature: 0.0
+```   
+
 **Research Required:**
 - What port does Docker Model Runner use by default?
 - What's the correct API endpoint path for OpenAI-compatible APIs?
@@ -87,16 +131,22 @@ We'll use **Mistral 7B** - it's lightweight (~4GB) yet powerful enough for quali
 **Your Task:** Create a `PdfSummarizationService` class that orchestrates the summarization process.
 
 ### Class Structure:
+
 ```java
 @Service
-@RequiredArgsConstructor  // If using Lombok
+@RequiredArgsConstructor
 public class PdfSummarizationService {
-    
-    private final ChatModel chatModel; // Spring will inject this
-    
-    public String summarize(MultipartFile pdfFile) throws IOException {
-        // Your implementation here
-        return "TODO: Implement summarization logic";
+
+    private final ChatModel chatModel;
+
+    public String summarize(MultipartFile pdf) throws IOException {
+        // TODO 1: validate pdf (size, emptiness)
+        // TODO 2: use PagePdfDocumentReader to pull List<Document>
+        // TODO 3: loop over pages → ask LLM for 2-3 sentence summary each
+        //         Hint: new ChatClient(chatModel).call("Prompt" + pageContent)
+        // TODO 4: combine page summaries → ask LLM again for global summary
+        // Return final summary
+        return null; // placeholder
     }
 }
 ```
@@ -126,6 +176,24 @@ public class PdfSummarizationService {
 
 **Your Task:** Create a REST controller that exposes your summarization service.
 
+### Class Structure:
+
+```java
+@RestController
+@RequestMapping("/api")
+@RequiredArgsConstructor
+public class SummarizationController {
+
+    private final PdfSummarizationService service;
+
+    @PostMapping("/summarize")
+    public ResponseEntity<String> summarize(@RequestParam("file") MultipartFile file) {
+        // TODO: call service
+        return null;
+    }
+}
+```
+
 ### Controller Requirements:
 1. **Annotations:** Use appropriate Spring annotations for REST endpoints
 2. **Endpoint Mapping:** Map to `/api/summarize` with POST method
@@ -143,12 +211,16 @@ public class PdfSummarizationService {
 
 **Your Task:** Replace the default `App.java` with a proper Spring Boot application class.
 
-### Requirements:
-- Use the correct Spring Boot annotation
-- Ensure proper package structure for component scanning
-- Verify your service and controller are in sub-packages that will be scanned
+### Class Structure:
 
-**Package Structure Tip:** Your main class should be in a root package with service and controller classes in sub-packages.
+```java
+@SpringBootApplication
+public class PdfSummarizerApplication {
+    public static void main(String[] args) { SpringApplication.run(PdfSummarizerApplication.class, args); }
+}
+```
+
+*(This one is boilerplate; left intact so the app actually starts.)*
 
 ## Step 7: Local Testing & Debugging
 
